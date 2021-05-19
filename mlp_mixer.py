@@ -2,8 +2,9 @@ import torch
 from torch import nn
 
 class MLP_Block(nn.Module):
-    def __init__(self, num_features,num_hidden, dropout):
+    def __init__(self, num_features, expansion, dropout):
         super(MLP_Block, self).__init__()
+        num_hidden = int(expansion*num_features)
         self.fc1 = nn.Linear(num_features, num_hidden)
         self.dropout = nn.Dropout(dropout)
         self.fc2 = nn.Linear(num_hidden, num_features)
@@ -18,10 +19,10 @@ class MLP_Block(nn.Module):
         return x 
 
 class Token_Mixer(nn.Module):
-    def __init__(self, num_patches, num_channels, hidden_nodes, dropout):
+    def __init__(self, num_patches, num_channels, expansion, dropout):
         super(Token_Mixer, self).__init__()
         self.layer_norm = nn.LayerNorm(num_channels)
-        self.mlp_block = MLP_Block(num_patches, hidden_nodes, dropout)
+        self.mlp_block = MLP_Block(num_patches, expansion, dropout)
     
     def forward(self, x):
         initial = x
@@ -33,10 +34,10 @@ class Token_Mixer(nn.Module):
         return output
 
 class Channel_Mixer(nn.Module):
-    def __init__(self, num_patches, num_channels, hidden_nodes, dropout):
+    def __init__(self, num_channels, expansion, dropout):
         super(Channel_Mixer, self).__init__()
         self.layer_norm = nn.LayerNorm(num_channels)
-        self.mlp_block = MLP_Block(num_channels, hidden_nodes, dropout)
+        self.mlp_block = MLP_Block(num_channels, expansion, dropout)
     
     def forward(self, x):
         initial = x
@@ -46,11 +47,11 @@ class Channel_Mixer(nn.Module):
         return output
 
 class Mixer_Layer(nn.Module):
-    def __init__(self, num_patches, num_channels,  hidden_nodes, dropout):
+    def __init__(self, num_patches, num_channels, expansion_token, expansion_channel,dropout):
         super(Mixer_Layer, self).__init__()
 
-        self.token_mixer = Token_Mixer( num_patches, num_channels, hidden_nodes, dropout )
-        self.channel_mixer = Channel_Mixer( num_patches, num_channels, hidden_nodes, dropout )
+        self.token_mixer = Token_Mixer( num_patches, num_channels, expansion_token, dropout)
+        self.channel_mixer = Channel_Mixer(num_channels, expansion_channel, dropout)
 
     def forward(self, x):
         x = self.token_mixer(x)
@@ -60,11 +61,12 @@ class Mixer_Layer(nn.Module):
 class MLP_Mixer(nn.Module):
     def __init__(self, image_shape : tuple, 
                  patch_size: int,
-                 num_classes: int, 
-                 num_mixers: int, 
-                 num_features: int, 
-                 hidden_nodes = None, 
-                 dropout: float=0.5):
+                 num_classes, 
+                 num_mixers, 
+                 num_features, 
+                 expansion_token=4,
+                 expansion_channel=0.5, 
+                 dropout=0.5):
         
         super(MLP_Mixer, self).__init__()
         
@@ -80,11 +82,9 @@ class MLP_Mixer(nn.Module):
         self.num_patches = (image_shape[0]//patch_size)**2
 
         self.num_mixers = num_mixers
-
-        self.hidden_nodes = hidden_nodes
-        if hidden_nodes is None:
-            self.hidden_nodes = self.num_features * 2
-
+        self.expansion_token = expansion_token
+        self.expansion_channel = expansion_channel
+    
         #this conv layer is only for breaking the image into patches of latent dim size
         self.patch_breaker = nn.Conv2d(in_channel, num_features, kernel_size=patch_size, stride=patch_size)
 
@@ -97,25 +97,28 @@ class MLP_Mixer(nn.Module):
         patches = patches.view(batch_size, -1, num_features)
 
         for _ in range(self.num_mixers):
-            patches = Mixer_Layer(self.num_patches, self.num_features, self.hidden_nodes, self.dropout)(patches)
-        
+            patches = Mixer_Layer(self.num_patches, 
+                                    self.num_features,
+                                    self.expansion_token,
+                                    self.expansion_channel, 
+                                    self.dropout)(patches)
+                                
         outputs = torch.mean(patches, dim=1)
         outputs = self.final_fc(outputs)
 
         return outputs
 
 if __name__=="__main__":
-    
-    model = MLP_Mixer(image_shape=(256,256,3), 
+    model = MLP_Mixer(image_shape=(224,224,3), 
                   patch_size = 16,
                   num_classes=10, 
                   num_mixers=8, 
-                  num_features=4)
+                  num_features=512)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
-    img = torch.randn((1,3, 256,256),dtype = torch.float32, device = device)
+    img = torch.randn((1,3, 224,224),dtype = torch.float32, device = device)
 
     preds = model(img)
     print(preds)

@@ -45,12 +45,18 @@ python mlp_mixer.py
 or start using the model by
 ```python
 from mlp_mixer import MLP_Mixer
-model = MLP_Mixer(image_shape=(256,256,3), 
+
+# Default Parameters for S/16 Model as given in paper
+model = MLP_Mixer(image_shape=(224,224,3), 
                   patch_size = 16,
                   num_classes=10, 
                   num_mixers=8, 
-                  num_features=4)
+                  num_features=512,
+                  expansion_token=4,
+                  expansion_channel=0.5, 
+                  dropout=0.5)
 ```
+
 ## Citations
 ```
 @article{tolstikhin2021,

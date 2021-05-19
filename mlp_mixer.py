@@ -103,3 +103,20 @@ class MLP_Mixer(nn.Module):
         outputs = self.final_fc(outputs)
 
         return outputs
+
+if __name__=="__main__":
+    
+    model = MLP_Mixer(image_shape=(256,256,3), 
+                  patch_size = 16,
+                  num_classes=10, 
+                  num_mixers=8, 
+                  num_features=4)
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+
+    img = torch.randn((1,3, 256,256),dtype = torch.float32, device = device)
+
+    preds = model(img)
+    print(preds)
+

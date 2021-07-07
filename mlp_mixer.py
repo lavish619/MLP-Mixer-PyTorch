@@ -70,23 +70,26 @@ class MLP_Mixer(nn.Module):
         
         super(MLP_Mixer, self).__init__()
         
-        self.dropout = dropout
-        self.num_features = num_features
-
         if len(image_shape)==2:
             in_channel = 1 
         elif len(image_shape):
             in_channel = image_shape[2]
 
         assert image_shape[0] % patch_size == 0
-        self.num_patches = (image_shape[0]//patch_size)**2
+        num_patches = (image_shape[0]//patch_size)**2
 
-        self.num_mixers = num_mixers
-        self.expansion_token = expansion_token
-        self.expansion_channel = expansion_channel
-    
         #this conv layer is only for breaking the image into patches of latent dim size
         self.patch_breaker = nn.Conv2d(in_channel, num_features, kernel_size=patch_size, stride=patch_size)
+
+        layers=[]
+        for _ in range(num_mixers):
+            layers.append(Mixer_Layer(num_patches, 
+                                    num_features,
+                                    expansion_token,
+                                    expansion_channel, 
+                                    dropout))
+            
+        self.mixer_layers = nn.Sequential(*layers)
 
         self.final_fc = nn.Linear(num_features , num_classes)
 
@@ -96,17 +99,13 @@ class MLP_Mixer(nn.Module):
         patches = patches.permute(0,2,3,1)
         patches = patches.view(batch_size, -1, num_features)
 
-        for _ in range(self.num_mixers):
-            patches = Mixer_Layer(self.num_patches, 
-                                    self.num_features,
-                                    self.expansion_token,
-                                    self.expansion_channel, 
-                                    self.dropout)(patches)
-                                
+        patches = self.mixer_layers(patches)
+                    
         outputs = torch.mean(patches, dim=1)
         outputs = self.final_fc(outputs)
 
         return outputs
+
 
 if __name__=="__main__":
     model = MLP_Mixer(image_shape=(224,224,3), 
